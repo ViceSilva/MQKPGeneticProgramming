@@ -1,3 +1,5 @@
+package model;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -22,6 +24,7 @@ public class Instance {
 	private int[][] profitMatrix;
 	private int[] itemWeight;
 	private double[] itemValue;
+	private int optimal;
 	private String fileName;
 	
 	
@@ -71,7 +74,46 @@ public class Instance {
 		}
 	}
 	
-	public boolean addItem(int knapsack, int itemIndex) {
+	private Instance(Instance base) {
+		this.knapsackNum = base.knapsackNum;
+		this.fileName = base.fileName;
+		this.profitMatrix = base.profitMatrix;
+		this.itemWeight = base.itemWeight;
+		invalidItems = new LinkedHashMap<>(base.invalidItems);
+		itemValue = base.itemValue;
+		items = new Vector<Integer>(base.items);
+		items.sort((a,b)->{
+			Double valA = itemValue[a];
+			Double valB = itemValue[b];
+			return valA.compareTo(valB);
+		});
+		//inicializamos knapsacks
+		knapsackList = new Vector<Integer>(base.knapsackList);
+		maxCapacity = base.maxCapacity;
+		maxAvailableCapacity = base.maxAvailableCapacity;
+		extraProfitbyRelation = new int[knapsackNum][];
+		for(int i = 0; i < base.extraProfitbyRelation.length; i++) {
+			extraProfitbyRelation[i] = base.extraProfitbyRelation[i].clone();
+		}
+		currentCapacity = base.currentCapacity.clone();
+		simpleProfitValue = base.simpleProfitValue.clone();
+		relationProfitValue = base.relationProfitValue.clone();
+		addedItemsKnapsack = new Vector[knapsackNum];
+		for(int i = 0; i < knapsackNum; i++) {
+			addedItemsKnapsack[i] = new Vector<Integer>(base.addedItemsKnapsack[i]);
+		}
+	}
+	//revisar override
+	public Instance clone() {
+		Instance clone = new Instance(this);
+		return clone;
+	}
+	
+	public void setOptimal(int optimal) {
+		this.optimal = optimal;
+	}
+	//agrega un item segun indice en la lista de items
+	private boolean addItembyIndex(int knapsack, int itemIndex) {
 		int item = items.get(itemIndex);
 		if(currentCapacity[knapsack] < itemWeight[item])
 			return false;
@@ -84,9 +126,32 @@ public class Instance {
 		return true;
 	}
 	
-	public boolean removeItem(int knapsack, int itemIndex) {
+	private boolean removeItembyIndex(int knapsack, int itemIndex) {
 		int item = addedItemsKnapsack[knapsack].get(itemIndex);
 		addedItemsKnapsack[knapsack].remove(itemIndex);
+		currentCapacity[knapsack] += itemWeight[item];
+		simpleProfitValue[knapsack] -= profitMatrix[item][item];
+		int newIndex = findFirstLowerElement(items, item) + 1;
+		items.add(newIndex, item);
+		removeUpdateExtraProfit(knapsack, item);
+		ReinsertValidItems();
+		return true;
+	}
+	
+	private boolean addItem(int knapsack, int item) {
+		if(currentCapacity[knapsack] < itemWeight[item])
+			return false;
+		items.remove((Integer)item);
+		currentCapacity[knapsack] -= itemWeight[item];
+		simpleProfitValue[knapsack] += profitMatrix[item][item];
+		int newIndex = findFirstLowerElement(addedItemsKnapsack[knapsack], item) + 1;
+		addedItemsKnapsack[knapsack].add(newIndex, item);
+		addUpdateExtraProfit(knapsack, item);
+		return true;
+	}
+	
+	private boolean removeItem(int knapsack, int item) {
+		addedItemsKnapsack[knapsack].remove((Integer)item);
 		currentCapacity[knapsack] += itemWeight[item];
 		simpleProfitValue[knapsack] -= profitMatrix[item][item];
 		int newIndex = findFirstLowerElement(items, item) + 1;
@@ -111,6 +176,8 @@ public class Instance {
 		}
 		return result;
 	}
+	
+	
 	
 	//se debe ingresar el elemento antes de utilizar esto para correcto funcionamiento
 	private void addUpdateExtraProfit(int knapsack, int item) {
@@ -278,7 +345,7 @@ public class Instance {
 			}
 		if(!changed)
 			return;
-		Set<Entry<Integer, Integer>> entrySet= invalidItems.entrySet();
+		Set<Entry<Integer, Integer>> entrySet = invalidItems.entrySet();
 		for(Map.Entry<Integer, Integer> entry: entrySet) {
 			if(maxAvailableCapacity > itemWeight[entry.getKey()]) {
 				items.add(entry.getKey());
@@ -310,7 +377,7 @@ public class Instance {
 	
 	private boolean tryAddItemIncreasingOrder(int itemIndex) {
 		for(int i = 0; i < knapsackList.size(); i++) {
-			if(this.addItem(knapsackList.get(i), itemIndex))
+			if(this.addItembyIndex(knapsackList.get(i), itemIndex))
 				return true;
 		}
 		invalidItems.put(items.get(itemIndex), items.get(itemIndex));
@@ -320,7 +387,7 @@ public class Instance {
 	
 	private boolean tryAddItemDecreasingOrder(int itemIndex) {
 		for(int i = knapsackList.size()-1; i >= 0; i--) {
-			if(this.addItem(knapsackList.get(i), itemIndex))
+			if(this.addItembyIndex(knapsackList.get(i), itemIndex))
 				return true;
 		}
 		invalidItems.put(items.get(itemIndex), items.get(itemIndex));
@@ -526,7 +593,7 @@ public class Instance {
 		if(addedItemsKnapsack[knapsack].isEmpty())
 			return false;
 		int itemIndex = addedItemsKnapsack[knapsack].size() - 1;
-		return this.removeItem(knapsack, itemIndex);
+		return this.removeItembyIndex(knapsack, itemIndex);
 	}
 	
 	public boolean removeLowestValueItemFromLowCapacityKnapsack() {
@@ -534,7 +601,7 @@ public class Instance {
 		if(addedItemsKnapsack[knapsack].isEmpty())
 			return false;
 		int itemIndex = 0;
-		return this.removeItem(knapsack, itemIndex);
+		return this.removeItembyIndex(knapsack, itemIndex);
 	}
 	
 	public boolean removeHighestVolumeItemFromLowCapacityKnapsack() {
@@ -542,7 +609,7 @@ public class Instance {
 		if(addedItemsKnapsack[knapsack].isEmpty())
 			return false;
 		int itemIndex = this.getMaxVolumeItemIndexinKnapsack(knapsack);
-		return this.removeItem(knapsack, itemIndex);
+		return this.removeItembyIndex(knapsack, itemIndex);
 	}
 	
 	public boolean removeLowestVolumeItemFromLowCapacityKnapsack() {
@@ -550,7 +617,7 @@ public class Instance {
 		if(addedItemsKnapsack[knapsack].isEmpty())
 			return false;
 		int itemIndex = this.getMinVolumeItemIndexinKnapsack(knapsack);
-		return this.removeItem(knapsack, itemIndex);
+		return this.removeItembyIndex(knapsack, itemIndex);
 	}
 	
 	public boolean removeHighestDensityItemFromLowCapacityKnapsack() {
@@ -558,7 +625,7 @@ public class Instance {
 		if(addedItemsKnapsack[knapsack].isEmpty())
 			return false;
 		int itemIndex = this.getMaxDensityItemIndexinKnapsack(knapsack);
-		return this.removeItem(knapsack, itemIndex);
+		return this.removeItembyIndex(knapsack, itemIndex);
 	}
 	
 	public boolean removeLowestDensityItemFromLowCapacityKnapsack() {
@@ -566,7 +633,7 @@ public class Instance {
 		if(addedItemsKnapsack[knapsack].isEmpty())
 			return false;
 		int itemIndex = this.getMinDensityItemIndexinKnapsack(knapsack);
-		return this.removeItem(knapsack, itemIndex);
+		return this.removeItembyIndex(knapsack, itemIndex);
 	}
 	
 	//////
@@ -576,7 +643,7 @@ public class Instance {
 		if(addedItemsKnapsack[knapsack].isEmpty())
 			return false;
 		int itemIndex = addedItemsKnapsack[knapsack].size() - 1;
-		return this.removeItem(knapsack, itemIndex);
+		return this.removeItembyIndex(knapsack, itemIndex);
 	}
 	
 	public boolean removeLowestValueItemFromHighCapacityKnapsack() {
@@ -584,7 +651,7 @@ public class Instance {
 		if(addedItemsKnapsack[knapsack].isEmpty())
 			return false;
 		int itemIndex = 0;
-		return this.removeItem(knapsack, itemIndex);
+		return this.removeItembyIndex(knapsack, itemIndex);
 	}
 	
 	public boolean removeHighestVolumeItemFromHighCapacityKnapsack() {
@@ -592,7 +659,7 @@ public class Instance {
 		if(addedItemsKnapsack[knapsack].isEmpty())
 			return false;
 		int itemIndex = this.getMaxVolumeItemIndexinKnapsack(knapsack);
-		return this.removeItem(knapsack, itemIndex);
+		return this.removeItembyIndex(knapsack, itemIndex);
 	}
 	
 	public boolean removeLowestVolumeItemFromHighCapacityKnapsack() {
@@ -600,7 +667,7 @@ public class Instance {
 		if(addedItemsKnapsack[knapsack].isEmpty())
 			return false;
 		int itemIndex = this.getMinVolumeItemIndexinKnapsack(knapsack);
-		return this.removeItem(knapsack, itemIndex);
+		return this.removeItembyIndex(knapsack, itemIndex);
 	}
 	
 	public boolean removeHighestDensityItemFromHighCapacityKnapsack() {
@@ -608,7 +675,7 @@ public class Instance {
 		if(addedItemsKnapsack[knapsack].isEmpty())
 			return false;
 		int itemIndex = this.getMaxDensityItemIndexinKnapsack(knapsack);
-		return this.removeItem(knapsack, itemIndex);
+		return this.removeItembyIndex(knapsack, itemIndex);
 	}
 	
 	public boolean removeLowestDensityItemFromHighCapacityKnapsack() {
@@ -616,7 +683,7 @@ public class Instance {
 		if(addedItemsKnapsack[knapsack].isEmpty())
 			return false;
 		int itemIndex = this.getMinDensityItemIndexinKnapsack(knapsack);
-		return this.removeItem(knapsack, itemIndex);
+		return this.removeItembyIndex(knapsack, itemIndex);
 	}
 	
 	///////////////////////////////////////////////////////////////////////////////
@@ -626,7 +693,7 @@ public class Instance {
 		if(addedItemsKnapsack[knapsack].isEmpty())
 			return false;
 		int itemIndex = addedItemsKnapsack[knapsack].size() - 1;
-		return this.removeItem(knapsack, itemIndex);
+		return this.removeItembyIndex(knapsack, itemIndex);
 	}
 	
 	public boolean removeLowestValueItemFromLowVolumeKnapsack() {
@@ -634,7 +701,7 @@ public class Instance {
 		if(addedItemsKnapsack[knapsack].isEmpty())
 			return false;
 		int itemIndex = 0;
-		return this.removeItem(knapsack, itemIndex);
+		return this.removeItembyIndex(knapsack, itemIndex);
 	}
 	
 	public boolean removeHighestVolumeItemFromLowVolumeKnapsack() {
@@ -642,7 +709,7 @@ public class Instance {
 		if(addedItemsKnapsack[knapsack].isEmpty())
 			return false;
 		int itemIndex = this.getMaxVolumeItemIndexinKnapsack(knapsack);
-		return this.removeItem(knapsack, itemIndex);
+		return this.removeItembyIndex(knapsack, itemIndex);
 	}
 	
 	public boolean removeLowestVolumeItemFromLowVolumeKnapsack() {
@@ -650,7 +717,7 @@ public class Instance {
 		if(addedItemsKnapsack[knapsack].isEmpty())
 			return false;
 		int itemIndex = this.getMinVolumeItemIndexinKnapsack(knapsack);
-		return this.removeItem(knapsack, itemIndex);
+		return this.removeItembyIndex(knapsack, itemIndex);
 	}
 	
 	public boolean removeHighestDensityItemFromLowVolumeKnapsack() {
@@ -658,7 +725,7 @@ public class Instance {
 		if(addedItemsKnapsack[knapsack].isEmpty())
 			return false;
 		int itemIndex = this.getMaxDensityItemIndexinKnapsack(knapsack);
-		return this.removeItem(knapsack, itemIndex);
+		return this.removeItembyIndex(knapsack, itemIndex);
 	}
 	
 	public boolean removeLowestDensityItemFromLowVolumeKnapsack() {
@@ -666,7 +733,7 @@ public class Instance {
 		if(addedItemsKnapsack[knapsack].isEmpty())
 			return false;
 		int itemIndex = this.getMinDensityItemIndexinKnapsack(knapsack);
-		return this.removeItem(knapsack, itemIndex);
+		return this.removeItembyIndex(knapsack, itemIndex);
 	}
 	
 	//////
@@ -676,7 +743,7 @@ public class Instance {
 		if(addedItemsKnapsack[knapsack].isEmpty())
 			return false;
 		int itemIndex = addedItemsKnapsack[knapsack].size() - 1;
-		return this.removeItem(knapsack, itemIndex);
+		return this.removeItembyIndex(knapsack, itemIndex);
 	}
 	
 	public boolean removeLowestValueItemFromHighVolumeKnapsack() {
@@ -684,7 +751,7 @@ public class Instance {
 		if(addedItemsKnapsack[knapsack].isEmpty())
 			return false;
 		int itemIndex = 0;
-		return this.removeItem(knapsack, itemIndex);
+		return this.removeItembyIndex(knapsack, itemIndex);
 	}
 	
 	public boolean removeHighestVolumeItemFromHighVolumeKnapsack() {
@@ -692,7 +759,7 @@ public class Instance {
 		if(addedItemsKnapsack[knapsack].isEmpty())
 			return false;
 		int itemIndex = this.getMaxVolumeItemIndexinKnapsack(knapsack);
-		return this.removeItem(knapsack, itemIndex);
+		return this.removeItembyIndex(knapsack, itemIndex);
 	}
 	
 	public boolean removeLowestVolumeItemFromHighVolumeKnapsack() {
@@ -700,7 +767,7 @@ public class Instance {
 		if(addedItemsKnapsack[knapsack].isEmpty())
 			return false;
 		int itemIndex = this.getMinVolumeItemIndexinKnapsack(knapsack);
-		return this.removeItem(knapsack, itemIndex);
+		return this.removeItembyIndex(knapsack, itemIndex);
 	}
 	
 	public boolean removeHighestDensityItemFromHighVolumeKnapsack() {
@@ -708,7 +775,7 @@ public class Instance {
 		if(addedItemsKnapsack[knapsack].isEmpty())
 			return false;
 		int itemIndex = this.getMaxDensityItemIndexinKnapsack(knapsack);
-		return this.removeItem(knapsack, itemIndex);
+		return this.removeItembyIndex(knapsack, itemIndex);
 	}
 	
 	public boolean removeLowestDensityItemFromHighVolumeKnapsack() {
@@ -716,7 +783,132 @@ public class Instance {
 		if(addedItemsKnapsack[knapsack].isEmpty())
 			return false;
 		int itemIndex = this.getMinDensityItemIndexinKnapsack(knapsack);
-		return this.removeItem(knapsack, itemIndex);
+		return this.removeItembyIndex(knapsack, itemIndex);
+	}
+	
+	public boolean bestItemSwap() {
+		int item1 = -1,item2 = -1;
+		int knapsack1 = -3,knapsack2 = -1;
+		int bestDelta = Integer.MIN_VALUE;
+		//knapsack1 se asignara -2 si el item elegido viene de los elementos invalidos y -1 si viene de elementos no agregados validos
+		//revisamos items en lista invalida como item1
+		for(Map.Entry<Integer, Integer> entry: invalidItems.entrySet()) {
+			for(int i = 0; i < knapsackNum; i++) {
+				int candidateItem = this.bestItemSwapinKnapsack(-2, i, entry.getKey());
+				if(candidateItem < 0)
+					continue;
+				//se resta profitMatrix[entry.getKey()][candidateItem] dado que extraProfitbyRelation al representar el profit extra que daria el item
+				//al ser agregado y no se esta quitando de inmediato el primer item esta considerando intrinsecamente el profit extra entre estos por lo que
+				//hay que restarlo
+				int delta = -profitMatrix[candidateItem][candidateItem] + profitMatrix[entry.getKey()][entry.getKey()] - 
+						extraProfitbyRelation[i][candidateItem] + extraProfitbyRelation[i][entry.getKey()] - profitMatrix[entry.getKey()][candidateItem];
+				if(delta > 0 && delta > bestDelta) {
+					bestDelta = delta;
+					item1 = entry.getKey();
+					item2 = candidateItem;
+					knapsack1 = -2;
+					knapsack2 = i;
+				}
+			}
+		}
+		//revisamos items lista general como item1
+		for(int i = 0; i < items.size(); i++) {
+			for(int j = 0; j < knapsackNum; j++) {
+				int candidateItem = this.bestItemSwapinKnapsack(-1, i, items.get(i));
+				if(candidateItem < 0)
+					continue;
+				int delta = -profitMatrix[candidateItem][candidateItem] + profitMatrix[items.get(i)][items.get(i)] - 
+						extraProfitbyRelation[i][candidateItem] + extraProfitbyRelation[i][items.get(i)] - profitMatrix[items.get(i)][candidateItem];
+				if(delta > 0 && delta > bestDelta) {
+					bestDelta = delta;
+					item1 = items.get(i);
+					item2 = candidateItem;
+					knapsack1 = -1;
+					knapsack2 = i;
+				}
+			}
+		}
+		//revisamos item en knapsacks como item1
+		for(int i = 0; i < knapsackNum - 1; i++) {
+			for(int j = i+1; j < knapsackNum; j++) {
+				for(int item : addedItemsKnapsack[i]) {
+					int candidateItem = this.bestItemSwapinKnapsack(i, j, items.get(i));
+					if(candidateItem < 0)
+						continue;
+					int delta1 = -extraProfitbyRelation[i][item] + extraProfitbyRelation[i][candidateItem] - profitMatrix[item][candidateItem];
+					int delta2 = -extraProfitbyRelation[j][candidateItem] + extraProfitbyRelation[j][item] - profitMatrix[item][candidateItem];
+					if((delta1 + delta2) > 0 && (delta1 + delta2) > bestDelta) {
+						bestDelta = (delta1 + delta2);
+						item1 = item;
+						item2 = candidateItem;
+						knapsack1 = i;
+						knapsack2 = j;
+					}
+				}
+			}
+		}
+		if(knapsack2 == -1)
+			return false;
+		
+		if(knapsack1 >= 0) {
+			this.removeItem(knapsack1, item1);
+			this.removeItem(knapsack2,item2);
+			this.addItem(knapsack2, item1);
+			this.addItem(knapsack1, item2);
+			return true;
+		}
+		this.removeItem(knapsack2,item2);
+		this.addItem(knapsack2, item1);
+		
+		if(knapsack1 == -2)
+			invalidItems.remove(item1);
+		return true;
+	}
+	
+	private int bestItemSwapinKnapsack(int originKnapsack, int knapsackNum, int itemId) {
+		int bestItemSwap = -1;
+		int bestSwapDelta = Integer.MIN_VALUE;
+		if(originKnapsack < 0) {//el item no viende de un knpasack
+			for(int i = 0; i < addedItemsKnapsack[knapsackNum].size(); i++) {
+				int itemId2 = addedItemsKnapsack[knapsackNum].get(i);
+				if(currentCapacity[knapsackNum] - itemWeight[itemId2] + itemWeight[itemId] < 0)
+					continue;
+				int deltaKnapsack = -extraProfitbyRelation[knapsackNum][itemId2] + extraProfitbyRelation[knapsackNum][itemId]-profitMatrix[itemId][itemId2]+profitMatrix[itemId2][itemId2];
+				if(deltaKnapsack > bestSwapDelta) {
+					bestSwapDelta = deltaKnapsack;
+					bestItemSwap = itemId2;
+				}
+			}
+			return bestItemSwap;	
+		}
+		//el item viene de un knapsack
+		for(int i = 0; i < addedItemsKnapsack[knapsackNum].size(); i++) {
+			int itemId2 = addedItemsKnapsack[knapsackNum].get(i);
+			if(currentCapacity[originKnapsack] - itemWeight[itemId] + itemWeight[itemId2] < 0 || 
+					currentCapacity[knapsackNum] - itemWeight[itemId2] + itemWeight[itemId] < 0)
+				continue;
+			int deltaOrigin = -extraProfitbyRelation[originKnapsack][itemId] + extraProfitbyRelation[originKnapsack][itemId2]-profitMatrix[itemId][itemId2];
+			int deltaKnapsack = -extraProfitbyRelation[knapsackNum][itemId2] + extraProfitbyRelation[knapsackNum][itemId]-profitMatrix[itemId][itemId2];
+			if(deltaOrigin + deltaKnapsack > bestSwapDelta) {
+				bestSwapDelta = deltaOrigin + deltaKnapsack;
+				bestItemSwap = itemId2;
+			}
+		}
+		return bestItemSwap;
+	}
+	
+	
+	public int getTotalProfit() {
+		int totalProfit = 0;
+		for(int i = 0; i < knapsackNum; i++) {
+			totalProfit += simpleProfitValue[i];
+			totalProfit += relationProfitValue[i];
+		}
+		return totalProfit;
+	}
+	
+	public int getOptimal() {
+		return optimal;
 	}
 	
 	
@@ -815,7 +1007,7 @@ public class Instance {
 		for(int i = 0; i < knapsackNum; i++) {
 			itemCount += addedItemsKnapsack[i].size();
 			Vector<Integer> itemList = addedItemsKnapsack[i];
-			int weight = 0, simpleProfit = 0, extraProfit = 0;
+			int weight = 0, simpleProfit = 0, extraProfit = 0, extraProfit2 = 0;
 			for(int j = 0; j < itemList.size(); j++) {
 				weight += itemWeight[itemList.get(j)];
 				simpleProfit += profitMatrix[itemList.get(j)][itemList.get(j)];
@@ -828,7 +1020,10 @@ public class Instance {
 				for(int k = j+1; k < itemList.size(); k++) {
 					extraProfit += profitMatrix[itemList.get(j)][itemList.get(k)];
 				}
-			if(extraProfit != relationProfitValue[i])
+			for(int j = 0; j < itemList.size(); j++) {
+				extraProfit2=extraProfitbyRelation[i][itemList.get(j)];
+			}
+			if(extraProfit != relationProfitValue[i] || extraProfit2/2 != relationProfitValue[i])
 				return false;
 		}
 		if(itemCount != itemWeight.length)
